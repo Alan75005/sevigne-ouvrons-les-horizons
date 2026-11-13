@@ -14,9 +14,9 @@ async function loadLive(){try{const r=await fetch('/api/public',{cache:'no-store
 async function loadHelloAssoProgress(){
  const label=document.getElementById('progress-text'),fill=document.getElementById('fill'),note=document.getElementById('progress-source'),bar=fill?.closest('[role="progressbar"]');
  if(!label||!fill)return;
- const now=new Date(),start=new Date('2026-11-20T00:00:00+01:00'),end=new Date('2026-12-20T23:59:59+01:00');
+ const now=new Date(),start=new Date('2026-11-04T00:00:00+01:00'),end=new Date('2026-12-20T23:59:59+01:00');
  const state=(message,detail)=>{label.textContent=message;fill.style.width='0%';bar?.removeAttribute('aria-valuenow');bar?.setAttribute('aria-valuetext',message);if(note)note.textContent=detail};
- if(now<start){state('Campagne à venir · ouverture le 20 novembre 2026','Aucun pourcentage n’est présenté avant le lancement. [À COMPLÉTER — VALIDATION SÉVIGNÉ : traitement des dons antérieurs au lancement]');return}
+ if(now<start){state('Progression à venir · début le 4 novembre 2026','Aucun pourcentage n’est présenté avant le début de la période de collecte.');return}
  try{
   const response=await fetch('/api/helloasso',{cache:'no-store'});if(!response.ok)throw Error('api_unavailable');
   const data=await response.json();if(!data.available||!Number.isFinite(data.amount)||data.amount<0)throw Error('invalid_amount');
@@ -24,7 +24,7 @@ async function loadHelloAssoProgress(){
   label.textContent=data.amount.toLocaleString('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0})+' enregistrés · '+pct.toLocaleString('fr-FR',{maximumFractionDigits:1})+' %';
   bar?.setAttribute('aria-valuenow',String(Math.min(150000,data.amount)));bar?.setAttribute('aria-valuetext',label.textContent);
   const updated=data.updated&&Number.isFinite(Date.parse(data.updated))?new Date(data.updated).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Paris'}):'date indisponible';
-  if(note)note.textContent='Paiements enregistrés sur HelloAsso depuis le 1er novembre 2026 · Données consultées le '+updated+' (heure de Paris). [À COMPLÉTER — VALIDATION SÉVIGNÉ : périmètre de collecte]'+(now>end?' · Campagne terminée, bilan à consolider.':'');
+  if(note)note.textContent='Paiements enregistrés sur HelloAsso depuis le 4 novembre 2026 · Données consultées le '+updated+' (heure de Paris).'+(now>end?' · Campagne terminée, bilan à consolider.':'');
  }catch(e){state(now>end?'Campagne terminée · bilan en cours de consolidation':'Données temporairement indisponibles','La synchronisation HelloAsso est indisponible. Aucun montant estimé n’est affiché.');}
 }
 loadHelloAssoProgress();
