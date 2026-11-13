@@ -3,8 +3,8 @@ const API='https://api.helloasso.com';
 const ORG='college-sevigne-paris';
 const FORM='1';
 const GOAL=150000;
-const START='2026-11-04T00:00:00+01:00';
-// La collecte affichée commence au 4 novembre 2026 (heure de Paris).
+const START='2026-11-01T00:00:00+01:00';
+// La collecte affichée commence au 1er novembre 2026 (heure de Paris).
 async function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'public, max-age=180, s-maxage=300','x-content-type-options':'nosniff'}})}
 export async function onRequestGet({env}){
  if(!env.HELLOASSO_CLIENT_ID||!env.HELLOASSO_CLIENT_SECRET)return json({available:false,reason:'credentials_missing'},503);
