@@ -3,7 +3,7 @@ const API='https://api.helloasso.com';
 const ORG='college-sevigne-paris';
 const FORM='1';
 const GOAL=150000;
-const START='2026-11-20T00:00:00+01:00';
+// Tous les dons de ce formulaire sont inclus, y compris ceux reçus avant le lancement public.
 async function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'public, max-age=180, s-maxage=300','x-content-type-options':'nosniff'}})}
 export async function onRequestGet({env}){
  if(!env.HELLOASSO_CLIENT_ID||!env.HELLOASSO_CLIENT_SECRET)return json({available:false,reason:'credentials_missing'},503);
@@ -16,7 +16,7 @@ export async function onRequestGet({env}){
   let cents=0,count=0,page=1,seen=new Set();
   while(page<=100){
    const url=new URL(API+'/v5/organizations/'+ORG+'/forms/Donation/'+FORM+'/payments');
-   url.searchParams.set('pageIndex',String(page));url.searchParams.set('pageSize','100');url.searchParams.set('from',START);
+   url.searchParams.set('pageIndex',String(page));url.searchParams.set('pageSize','100');
    const response=await fetch(url,{headers:{authorization:'Bearer '+token,accept:'application/json'}});
    if(!response.ok)return json({available:false,reason:'form_lookup_failed',httpStatus:response.status},503);
    const result=await response.json();const items=result.data||[];
@@ -26,7 +26,6 @@ export async function onRequestGet({env}){
     if(p.type==='Debit')continue;
     if(seen.has(p.id))continue;
     seen.add(p.id);
-    const donationItems=(p.items||[]).filter(i=>['Donation','MonthlyDonation','OfflineDonation'].includes(i.type));
     // Un formulaire Donation ne contient que des dons ; montant du paiement hors pourboire.
     const amount=Number(p.amount);
     if(Number.isFinite(amount)&&amount>0){cents+=amount;count++}
