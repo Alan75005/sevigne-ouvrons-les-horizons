@@ -1,5 +1,5 @@
 const DON='https://www.helloasso.com/associations/college-sevigne-paris/formulaires/1';
-const target=new Date('2026-12-20T23:59:59+01:00');function countdown(){const e=document.getElementById('days');if(!e)return;let d=target-new Date();e.textContent=Math.max(0,Math.ceil(d/86400000));document.getElementById('dayslabel').textContent=d>0?'jours avant la clôture':'campagne terminée'}countdown();
+const target=new Date('2026-12-31T23:59:59+01:00');function countdown(){const e=document.getElementById('days');if(!e)return;let d=target-new Date();e.textContent=Math.max(0,Math.ceil(d/86400000));document.getElementById('dayslabel').textContent=d>0?'jours avant la clôture':'campagne terminée'}countdown();
 const io='IntersectionObserver'in window?new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target)}}),{threshold:.12}):null;document.querySelectorAll('.reveal').forEach(x=>io?io.observe(x):x.classList.add('visible'));
 function burst(){if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;for(let i=0;i<16;i++){const el=document.createElement('span');el.className='confetti';el.style.left=Math.random()*100+'vw';el.style.top='-20px';el.style.background=['#A64B43','#D8BA80','#B7C9D1','#355f78'][i%4];el.style.animationDelay=Math.random()*.3+'s';document.body.appendChild(el);setTimeout(()=>el.remove(),2000)}}
 document.querySelectorAll('.amount').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.amount').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.getElementById('chosen').textContent='Mon intention de don : '+Number(b.dataset.amount).toLocaleString('fr-FR')+' €';burst()}));
@@ -14,7 +14,7 @@ async function loadLive(){try{const r=await fetch('/api/public',{cache:'no-store
 async function loadHelloAssoProgress(){
  const label=document.getElementById('progress-text'),fill=document.getElementById('fill'),note=document.getElementById('progress-source'),bar=fill?.closest('[role="progressbar"]');
  if(!label||!fill)return;
- const now=new Date(),start=new Date('2026-11-01T00:00:00+01:00'),end=new Date('2026-12-20T23:59:59+01:00');
+ const now=new Date(),start=new Date('2026-11-01T00:00:00+01:00'),end=new Date('2026-12-31T23:59:59+01:00');
  const state=(message,detail)=>{label.textContent=message;fill.style.width='0%';bar?.removeAttribute('aria-valuenow');bar?.setAttribute('aria-valuetext',message);if(note)note.textContent=detail};
  if(now<start){state('Progression à venir · début le 1er novembre 2026','Aucun pourcentage n’est présenté avant le début de la période de collecte.');return}
  try{
