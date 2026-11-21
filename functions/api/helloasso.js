@@ -81,7 +81,14 @@ export async function onRequestGet({env,request,context}){
   if(page>100)return fallback('pagination_limit');
   const data={available:true,amount:cents/100,goal:GOAL,payments:count,updated:new Date().toISOString()};
   stage='verified_cache';
-  if(cache){const saved=json(data);saved.headers.set('cache-control','public, max-age=86400');context?.waitUntil(cache.put(key,saved));}
+  // Un cache défaillant ne doit jamais masquer des paiements HelloAsso vérifiés.
+  if(cache){
+   try{
+    const saved=new Response(JSON.stringify(data),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'public, max-age=86400'}});
+    const task=cache.put(key,saved).catch(()=>{});
+    if(context?.waitUntil)context.waitUntil(task);
+   }catch(e){/* Le montant vérifié reste disponible sans cache. */}
+  }
   return json(data);
  }catch(e){return fallback('service_unavailable_'+stage)}
 }
