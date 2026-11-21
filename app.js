@@ -14,17 +14,41 @@ async function loadLive(){try{const r=await fetch('/api/public',{cache:'no-store
 async function loadHelloAssoProgress(){
  const label=document.getElementById('progress-text'),fill=document.getElementById('fill'),note=document.getElementById('progress-source'),bar=fill?.closest('[role="progressbar"]');
  if(!label||!fill)return;
- const now=new Date(),start=new Date('2026-11-01T00:00:00+01:00'),end=new Date('2026-12-31T23:59:59+01:00');
- const state=(message,detail)=>{label.textContent=message;fill.style.width='0%';bar?.removeAttribute('aria-valuenow');bar?.setAttribute('aria-valuetext',message);if(note)note.textContent=detail};
- if(now<start){state('Progression à venir · début le 1er novembre 2026','Aucun pourcentage n’est présenté avant le début de la période de collecte.');return}
+ const key='sevigne_helloasso_last_verified_v1',goal=150000;
+ const show=(data,stale=false)=>{
+  const amount=Number(data.amount),pct=amount/goal*100;
+  if(!Number.isFinite(amount)||amount<0)return false;
+  fill.style.width=Math.min(100,pct)+'%';
+  label.textContent=amount.toLocaleString('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0})+' collectés · '+pct.toLocaleString('fr-FR',{maximumFractionDigits:1})+' %'+(stale?' (dernier relevé)':'');
+  bar?.setAttribute('aria-valuenow',String(Math.min(goal,amount)));
+  bar?.setAttribute('aria-valuetext',label.textContent);
+  const date=data.updated&&Number.isFinite(Date.parse(data.updated))?new Date(data.updated).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Paris'}):'non précisée';
+  if(note)note.textContent=(stale?'Dernier montant vérifié sur HelloAsso le ':'Paiements HelloAsso · Actualisé le ')+date+(stale?' · Connexion momentanément indisponible.':' (heure de Paris).');
+  return true;
+ };
+ const retrieve=async()=>{
+  const response=await fetch('/api/helloasso?refresh='+Date.now(),{cache:'no-store'});
+  if(!response.ok)throw Error('api_'+response.status);
+  const data=await response.json();
+  if(!data.available||!Number.isFinite(Number(data.amount))||Number(data.amount)<0)throw Error('invalid_data');
+  return data;
+ };
+ for(let attempt=0;attempt<3;attempt++){
+  try{
+   const data=await retrieve();
+   if(show(data)){try{localStorage.setItem(key,JSON.stringify(data))}catch(e){}}
+   return;
+  }catch(e){if(attempt<2)await new Promise(resolve=>setTimeout(resolve,(attempt+1)*800))}
+ }
  try{
-  const response=await fetch('/api/helloasso',{cache:'no-store'});if(!response.ok)throw Error('api_unavailable');
-  const data=await response.json();if(!data.available||!Number.isFinite(data.amount)||data.amount<0)throw Error('invalid_amount');
-  const pct=data.amount/150000*100;fill.style.width=Math.min(100,pct)+'%';
-  label.textContent=data.amount.toLocaleString('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0})+' enregistrés · '+pct.toLocaleString('fr-FR',{maximumFractionDigits:1})+' %';
-  bar?.setAttribute('aria-valuenow',String(Math.min(150000,data.amount)));bar?.setAttribute('aria-valuetext',label.textContent);
-  const updated=data.updated&&Number.isFinite(Date.parse(data.updated))?new Date(data.updated).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Paris'}):'date indisponible';
-  if(note)note.textContent='Paiements enregistrés sur HelloAsso depuis le 4 novembre 2026 · Données consultées le '+updated+' (heure de Paris).'+(now>end?' · Campagne terminée, bilan à consolider.':'');
- }catch(e){state(now>end?'Campagne terminée · bilan en cours de consolidation':'Données temporairement indisponibles','La synchronisation HelloAsso est indisponible. Aucun montant estimé n’est affiché.');}
+  const saved=JSON.parse(localStorage.getItem(key)||'null');
+  if(saved&&show(saved,true))return;
+ }catch(e){}
+ label.textContent='Connexion HelloAsso momentanément indisponible';
+ fill.style.width='0%';
+ bar?.removeAttribute('aria-valuenow');
+ bar?.setAttribute('aria-valuetext',label.textContent);
+ if(note)note.textContent='Le montant réel sera affiché dès le rétablissement de la synchronisation.';
 }
+
 loadHelloAssoProgress();
