@@ -71,7 +71,7 @@ function renderAmbassadors(data){
  const fill=document.getElementById('ambassador-fill');
  const bar=document.getElementById('ambassador-progress');
  if(!count||!fill||!bar)return;
- const n=Math.max(0,Number(data.count)||0),goal=500;
+ const n=Math.max(0,Number(data.count)||0),goal=100;
  count.textContent=n.toLocaleString('fr-FR')+' / '+goal;
  fill.style.width=Math.min(100,n/goal*100)+'%';
  bar.setAttribute('aria-valuenow',String(Math.min(goal,n)));
