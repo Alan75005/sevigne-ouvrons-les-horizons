@@ -51,3 +51,68 @@ async function loadHelloAssoProgress(){
 }
 
 loadHelloAssoProgress();
+
+
+/* Engagements des ambassadeurs : enregistrement persistant via Cloudflare KV. */
+const AMBASSADOR_KEY='sevigne_ambassador_uuid_v1';
+let ambassadorAvailable=false;
+function ambassadorId(){
+ try{
+  let id=localStorage.getItem(AMBASSADOR_KEY);
+  if(!id){id=crypto.randomUUID();localStorage.setItem(AMBASSADOR_KEY,id);}
+  return id;
+ }catch{return null;}
+}
+function renderAmbassadors(data){
+ const count=document.getElementById('ambassador-count');
+ const fill=document.getElementById('ambassador-fill');
+ const bar=document.getElementById('ambassador-progress');
+ if(!count||!fill||!bar)return;
+ const n=Math.max(0,Number(data.count)||0),goal=100;
+ count.textContent=n.toLocaleString('fr-FR')+' / '+goal;
+ fill.style.width=Math.min(100,n/goal*100)+'%';
+ bar.setAttribute('aria-valuenow',String(Math.min(goal,n)));
+ bar.setAttribute('aria-valuetext',n+' ambassadeurs sur '+goal);
+}
+async function loadAmbassadors(){
+ const button=document.getElementById('ambassador-join');
+ const count=document.getElementById('ambassador-count');
+ const feedback=document.getElementById('ambassador-feedback');
+ if(!button)return;
+ try{
+  const response=await fetch('/api/ambassadors',{cache:'no-store'});
+  if(!response.ok)throw Error('unavailable');
+  const data=await response.json();
+  if(!data.available)throw Error('unavailable');
+  ambassadorAvailable=true;
+  renderAmbassadors(data);
+  button.disabled=false;
+  if(!ambassadorId()){button.disabled=true;feedback.textContent='Votre navigateur ne permet pas cet enregistrement.';}
+ }catch{
+  ambassadorAvailable=false;
+  button.disabled=true;
+  if(count)count.textContent='Bientôt disponible';
+  if(feedback)feedback.textContent='Le compteur sera activé prochainement.';
+ }
+}
+async function joinAmbassadors(){
+ const button=document.getElementById('ambassador-join');
+ const feedback=document.getElementById('ambassador-feedback');
+ const id=ambassadorId();
+ if(!button||!feedback||!id||!ambassadorAvailable)return;
+ button.disabled=true;
+ feedback.textContent='Enregistrement en cours…';
+ try{
+  const response=await fetch('/api/ambassadors',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})});
+  if(!response.ok)throw Error('unavailable');
+  const data=await response.json();
+  if(!data.registered)throw Error('unavailable');
+  renderAmbassadors(data);
+  button.textContent='Engagement enregistré';
+  feedback.textContent='Merci ! Partagez maintenant notre appel aux dons avec votre entourage.';
+ }catch{
+  button.disabled=false;
+  feedback.textContent='Enregistrement momentanément indisponible. Réessayez dans quelques instants.';
+ }
+}
+loadAmbassadors();
