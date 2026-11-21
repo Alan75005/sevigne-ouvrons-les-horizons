@@ -22,7 +22,9 @@ export async function onRequestGet({env,request,context}){
  };
  if(cooldownUntil>Date.now())return fallback('authentication_rate_limited');
  if(!env.HELLOASSO_CLIENT_ID||!env.HELLOASSO_CLIENT_SECRET)return fallback('credentials_missing');
+ let stage='initialization';
  try{
+  stage='token_cache';
   let token=null;
   if(cache){
    const savedToken=await cache.match(tokenKey);
@@ -32,6 +34,7 @@ export async function onRequestGet({env,request,context}){
    // Réserver une fenêtre d'attente avant l'appel pour éviter des connexions en rafale.
    setCooldown(60000);
    const body=new URLSearchParams({grant_type:'client_credentials',client_id:String(env.HELLOASSO_CLIENT_ID).trim(),client_secret:String(env.HELLOASSO_CLIENT_SECRET).trim()});
+   stage='authentication';
    const auth=await fetch(API+'/oauth2/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
    if(!auth.ok){
     if(auth.status===429){
@@ -42,6 +45,7 @@ export async function onRequestGet({env,request,context}){
     }else setCooldown(300000);
     return fallback('authentication_failed_'+auth.status);
    }
+   stage='authentication_response';
    const payload=await auth.json();
    token=payload.access_token;
    if(!token)return fallback('missing_token');
@@ -55,8 +59,10 @@ export async function onRequestGet({env,request,context}){
   while(page<=100){
    const url=new URL(API+'/v5/organizations/'+ORG+'/forms/Donation/'+FORM+'/payments');
    url.searchParams.set('pageIndex',String(page));url.searchParams.set('pageSize','100');url.searchParams.set('from',START);
+   stage='payments_request';
    const response=await fetch(url,{headers:{authorization:'Bearer '+token,accept:'application/json'}});
    if(!response.ok)return fallback('form_lookup_failed_'+response.status);
+   stage='payments_response';
    const result=await response.json();const items=result.data||[];
    if(!Array.isArray(items))return fallback('invalid_response');
    for(const p of items){
@@ -74,7 +80,8 @@ export async function onRequestGet({env,request,context}){
   }
   if(page>100)return fallback('pagination_limit');
   const data={available:true,amount:cents/100,goal:GOAL,payments:count,updated:new Date().toISOString()};
+  stage='verified_cache';
   if(cache){const saved=json(data);saved.headers.set('cache-control','public, max-age=86400');context?.waitUntil(cache.put(key,saved));}
   return json(data);
- }catch(e){return fallback('service_unavailable')}
+ }catch(e){return fallback('service_unavailable_'+stage)}
 }
