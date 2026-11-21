@@ -12,11 +12,12 @@ export async function onRequestGet({env,request,context}){
  const kvRead=async(k)=>{if(!kv)return null;try{return await kv.get('helloasso:private:'+k,'json')}catch{return null}};
  const kvWrite=async(k,v,ttl)=>{if(!kv)return;try{await kv.put('helloasso:private:'+k,JSON.stringify(v),{expirationTtl:ttl})}catch{}};
  const key=new Request(new URL('/api/helloasso-verified-v1',request.url).toString(),{method:'GET'});
- const cached=cache?await cache.match(key):null;
+ const cacheMatch=async(key)=>{if(!cache)return null;try{return await cache.match(key)}catch{return null}};
+ const cached=await cacheMatch(key);
  const verifiedKV=await kvRead('verified-v1');
  const tokenKey=new Request(new URL('/api/helloasso-token-cache-v3',request.url).toString(),{method:'GET'});
  const cooldownKey=new Request(new URL('/api/helloasso-auth-cooldown-v2',request.url).toString(),{method:'GET'});
- const cooldown=cache?await cache.match(cooldownKey):null;
+ const cooldown=await cacheMatch(cooldownKey);
  const cooldownKV=await kvRead('cooldown-v1');
  const cooldownUntil=Math.max(cooldown?Number(await cooldown.text()):0,Number(cooldownKV?.until)||0);
  const setCooldown=(ms)=>{const until=Date.now()+ms;const ttl=Math.ceil(ms/1000);if(cache){const response=new Response(String(until),{headers:{'cache-control':'public, max-age='+ttl}});context?.waitUntil(cache.put(cooldownKey,response).catch(()=>{}));}if(kv)context?.waitUntil(kvWrite('cooldown-v1',{until},ttl));};
@@ -36,12 +37,12 @@ export async function onRequestGet({env,request,context}){
   const tokenKV=await kvRead('token-v1');
   if(tokenKV?.token&&Number(tokenKV.expiresAt)>Date.now()+60000)token=tokenKV.token;
   if(!token&&cache){
-   const savedToken=await cache.match(tokenKey);
+   const savedToken=await cacheMatch(tokenKey);
    if(savedToken){try{const data=await savedToken.json();if(data.token&&Number(data.expiresAt)>Date.now()+60000)token=data.token;}catch(e){}}
   }
   if(!token){
    // Temporiser les authentifications concurrentes et respecter les limites HelloAsso.
-   setCooldown(120000);
+   await kvWrite('cooldown-v1',{until:Date.now()+120000},120);
    const body=new URLSearchParams({grant_type:'client_credentials',client_id:String(env.HELLOASSO_CLIENT_ID).trim(),client_secret:String(env.HELLOASSO_CLIENT_SECRET).trim()});
    stage='authentication';
    const auth=await fetch(API+'/oauth2/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
@@ -59,10 +60,10 @@ export async function onRequestGet({env,request,context}){
    token=payload.access_token;
    if(!token)return fallback('missing_token');
    const ttl=Math.max(60,Math.min(3600,Number(payload.expires_in)||1800)-120);
-   if(kv)context?.waitUntil(kvWrite('token-v1',{token,expiresAt:Date.now()+ttl*1000},ttl));
+   if(kv)await kvWrite('token-v1',{token,expiresAt:Date.now()+ttl*1000},ttl);
    if(cache){
     const response=new Response(JSON.stringify({token,expiresAt:Date.now()+ttl*1000}),{headers:{'cache-control':'public, max-age='+ttl}});
-    context?.waitUntil(cache.put(tokenKey,response));
+    if(context?.waitUntil)context.waitUntil(cache.put(tokenKey,response).catch(()=>{}));
    }
   }
   let cents=0,count=0,page=1,seen=new Set();
@@ -91,7 +92,7 @@ export async function onRequestGet({env,request,context}){
   if(page>100)return fallback('pagination_limit');
   const data={available:true,amount:cents/100,goal:GOAL,payments:count,updated:new Date().toISOString()};
   stage='verified_cache';
-  if(kv)context?.waitUntil(kvWrite('verified-v1',data,86400*7));
+  if(kv)await kvWrite('verified-v1',data,86400*7);
   // Un cache défaillant ne doit jamais masquer des paiements HelloAsso vérifiés.
   if(cache){
    try{
