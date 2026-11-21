@@ -10,16 +10,21 @@ export async function onRequestGet({env,request,context}){
  const cache=typeof caches!=='undefined'?caches.default:null;
  const key=new Request(new URL('/api/helloasso-verified-v1',request.url).toString(),{method:'GET'});
  const cached=cache?await cache.match(key):null;
+ const cooldownKey=new Request(new URL('/api/helloasso-auth-cooldown-v2',request.url).toString(),{method:'GET'});
+ const cooldown=cache?await cache.match(cooldownKey):null;
+ const cooldownUntil=cooldown?Number(await cooldown.text()):0;
+ const setCooldown=(ms)=>{if(cache){const response=new Response(String(Date.now()+ms),{headers:{'cache-control':'public, max-age='+Math.ceil(ms/1000)}});context?.waitUntil(cache.put(cooldownKey,response));}};
  if(cached){try{const data=await cached.clone().json();if(data.available&&Date.now()-Date.parse(data.updated)<300000)return json(data)}catch(e){}}
  const fallback=async(reason,status=503)=>{
   if(cached){try{const data=await cached.clone().json();if(data.available)return json({...data,stale:true,warning:reason})}catch(e){}}
   return json({available:false,reason},status);
  };
+ if(cooldownUntil>Date.now())return fallback('authentication_rate_limited');
  if(!env.HELLOASSO_CLIENT_ID||!env.HELLOASSO_CLIENT_SECRET)return fallback('credentials_missing');
  try{
   const body=new URLSearchParams({grant_type:'client_credentials',client_id:String(env.HELLOASSO_CLIENT_ID).trim(),client_secret:String(env.HELLOASSO_CLIENT_SECRET).trim()});
   const auth=await fetch(API+'/oauth2/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
-  if(!auth.ok)return fallback('authentication_failed_'+auth.status);
+  if(!auth.ok){if(auth.status===429){const retry=Number(auth.headers.get('retry-after'));setCooldown(Number.isFinite(retry)&&retry>0?Math.min(retry*1000,3600000):900000);}return fallback('authentication_failed_'+auth.status);}
   const token=(await auth.json()).access_token;
   if(!token)return fallback('missing_token');
   let cents=0,count=0,page=1,seen=new Set();
