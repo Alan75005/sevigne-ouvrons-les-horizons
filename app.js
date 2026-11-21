@@ -27,7 +27,7 @@ async function loadHelloAssoProgress(){
   return true;
  };
  const retrieve=async()=>{
-  const response=await fetch('/api/helloasso?refresh='+Date.now(),{cache:'no-store'});
+  const response=await fetch('/api/helloasso?refresh='+Date.now(),{cache:'no-store',headers:{'accept':'application/json'}});
   if(!response.ok)throw Error('api_'+response.status);
   const data=await response.json();
   if(!data.available||!Number.isFinite(Number(data.amount))||Number(data.amount)<0)throw Error('invalid_data');
@@ -35,7 +35,7 @@ async function loadHelloAssoProgress(){
  };
  try{
   const data=await retrieve();
-  if(show(data,Boolean(data.stale))&&!data.stale){try{localStorage.setItem(key,JSON.stringify(data))}catch(e){}}
+  if(show(data,Boolean(data.stale))){try{localStorage.setItem(key,JSON.stringify(data))}catch(e){}}
   return;
  }catch(e){}
 
@@ -43,11 +43,14 @@ async function loadHelloAssoProgress(){
   const saved=JSON.parse(localStorage.getItem(key)||'null');
   if(saved&&show(saved,true))return;
  }catch(e){}
- label.textContent='Connexion HelloAsso momentanément indisponible';
+ label.textContent='Synchronisation de la collecte en cours…';
  fill.style.width='0%';
  bar?.removeAttribute('aria-valuenow');
  bar?.setAttribute('aria-valuetext',label.textContent);
- if(note)note.textContent='Le montant réel sera affiché dès le rétablissement de la synchronisation.';
+ if(note)note.textContent='Nouvelle tentative de récupération des montants vérifiés sur HelloAsso.';
+ if(!loadHelloAssoProgress.retryCount)loadHelloAssoProgress.retryCount=0;
+ if(loadHelloAssoProgress.retryCount<4){loadHelloAssoProgress.retryCount++;setTimeout(loadHelloAssoProgress,15000*loadHelloAssoProgress.retryCount);}
+ else{label.textContent='Montant temporairement indisponible';if(note)note.textContent='Consultez directement HelloAsso pour le montant actualisé.';}
 }
 
 loadHelloAssoProgress();
