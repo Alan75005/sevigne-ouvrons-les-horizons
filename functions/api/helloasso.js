@@ -8,15 +8,22 @@ const START='2026-11-01T00:00:00+01:00';
 async function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':status===200?'public, max-age=120, s-maxage=300':'no-store','x-content-type-options':'nosniff'}})}
 export async function onRequestGet({env,request,context}){
  const cache=typeof caches!=='undefined'?caches.default:null;
+ const kv=env.AMBASSADORS||null;
+ const kvRead=async(k)=>{if(!kv)return null;try{return await kv.get('helloasso:private:'+k,'json')}catch{return null}};
+ const kvWrite=async(k,v,ttl)=>{if(!kv)return;try{await kv.put('helloasso:private:'+k,JSON.stringify(v),{expirationTtl:ttl})}catch{}};
  const key=new Request(new URL('/api/helloasso-verified-v1',request.url).toString(),{method:'GET'});
  const cached=cache?await cache.match(key):null;
+ const verifiedKV=await kvRead('verified-v1');
  const tokenKey=new Request(new URL('/api/helloasso-token-cache-v3',request.url).toString(),{method:'GET'});
  const cooldownKey=new Request(new URL('/api/helloasso-auth-cooldown-v2',request.url).toString(),{method:'GET'});
  const cooldown=cache?await cache.match(cooldownKey):null;
- const cooldownUntil=cooldown?Number(await cooldown.text()):0;
- const setCooldown=(ms)=>{if(cache){const response=new Response(String(Date.now()+ms),{headers:{'cache-control':'public, max-age='+Math.ceil(ms/1000)}});context?.waitUntil(cache.put(cooldownKey,response));}};
+ const cooldownKV=await kvRead('cooldown-v1');
+ const cooldownUntil=Math.max(cooldown?Number(await cooldown.text()):0,Number(cooldownKV?.until)||0);
+ const setCooldown=(ms)=>{const until=Date.now()+ms;const ttl=Math.ceil(ms/1000);if(cache){const response=new Response(String(until),{headers:{'cache-control':'public, max-age='+ttl}});context?.waitUntil(cache.put(cooldownKey,response).catch(()=>{}));}if(kv)context?.waitUntil(kvWrite('cooldown-v1',{until},ttl));};
+ if(verifiedKV?.available&&Date.now()-Date.parse(verifiedKV.updated)<900000)return json(verifiedKV);
  if(cached){try{const data=await cached.clone().json();if(data.available&&Date.now()-Date.parse(data.updated)<900000)return json(data)}catch(e){}}
  const fallback=async(reason,status=503)=>{
+  if(verifiedKV?.available)return json({...verifiedKV,stale:true,warning:reason});
   if(cached){try{const data=await cached.clone().json();if(data.available)return json({...data,stale:true,warning:reason})}catch(e){}}
   return json({available:false,reason},status);
  };
@@ -26,13 +33,15 @@ export async function onRequestGet({env,request,context}){
  try{
   stage='token_cache';
   let token=null;
-  if(cache){
+  const tokenKV=await kvRead('token-v1');
+  if(tokenKV?.token&&Number(tokenKV.expiresAt)>Date.now()+60000)token=tokenKV.token;
+  if(!token&&cache){
    const savedToken=await cache.match(tokenKey);
    if(savedToken){try{const data=await savedToken.json();if(data.token&&Number(data.expiresAt)>Date.now()+60000)token=data.token;}catch(e){}}
   }
   if(!token){
-   // Réserver une fenêtre d'attente avant l'appel pour éviter des connexions en rafale.
-   setCooldown(60000);
+   // Temporiser les authentifications concurrentes et respecter les limites HelloAsso.
+   setCooldown(120000);
    const body=new URLSearchParams({grant_type:'client_credentials',client_id:String(env.HELLOASSO_CLIENT_ID).trim(),client_secret:String(env.HELLOASSO_CLIENT_SECRET).trim()});
    stage='authentication';
    const auth=await fetch(API+'/oauth2/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
@@ -49,8 +58,9 @@ export async function onRequestGet({env,request,context}){
    const payload=await auth.json();
    token=payload.access_token;
    if(!token)return fallback('missing_token');
+   const ttl=Math.max(60,Math.min(3600,Number(payload.expires_in)||1800)-120);
+   if(kv)context?.waitUntil(kvWrite('token-v1',{token,expiresAt:Date.now()+ttl*1000},ttl));
    if(cache){
-    const ttl=Math.max(60,Math.min(3600,Number(payload.expires_in)||1800)-120);
     const response=new Response(JSON.stringify({token,expiresAt:Date.now()+ttl*1000}),{headers:{'cache-control':'public, max-age='+ttl}});
     context?.waitUntil(cache.put(tokenKey,response));
    }
@@ -81,6 +91,7 @@ export async function onRequestGet({env,request,context}){
   if(page>100)return fallback('pagination_limit');
   const data={available:true,amount:cents/100,goal:GOAL,payments:count,updated:new Date().toISOString()};
   stage='verified_cache';
+  if(kv)context?.waitUntil(kvWrite('verified-v1',data,86400*7));
   // Un cache défaillant ne doit jamais masquer des paiements HelloAsso vérifiés.
   if(cache){
    try{
