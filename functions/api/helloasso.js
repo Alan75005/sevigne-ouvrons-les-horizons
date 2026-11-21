@@ -9,9 +9,9 @@ async function json(data,status=200){return new Response(JSON.stringify(data),{s
 export async function onRequestGet({env}){
  if(!env.HELLOASSO_CLIENT_ID||!env.HELLOASSO_CLIENT_SECRET)return json({available:false,reason:'credentials_missing'},503);
  try{
-  const body=new URLSearchParams({grant_type:'client_credentials',client_id:env.HELLOASSO_CLIENT_ID,client_secret:env.HELLOASSO_CLIENT_SECRET});
+  const body=new URLSearchParams({grant_type:'client_credentials',client_id:String(env.HELLOASSO_CLIENT_ID).trim(),client_secret:String(env.HELLOASSO_CLIENT_SECRET).trim()});
   const auth=await fetch(API+'/oauth2/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
-  if(!auth.ok)return json({available:false,reason:'authentication_failed'},503);
+  if(!auth.ok)return json({available:false,reason:'authentication_failed',httpStatus:auth.status},503);
   const token=(await auth.json()).access_token;
   if(!token)return json({available:false,reason:'missing_token'},503);
   let cents=0,count=0,page=1,seen=new Set();
