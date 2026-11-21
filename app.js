@@ -33,13 +33,12 @@ async function loadHelloAssoProgress(){
   if(!data.available||!Number.isFinite(Number(data.amount))||Number(data.amount)<0)throw Error('invalid_data');
   return data;
  };
- for(let attempt=0;attempt<3;attempt++){
-  try{
-   const data=await retrieve();
-   if(show(data,Boolean(data.stale))){if(!data.stale){try{localStorage.setItem(key,JSON.stringify(data))}catch(e){}}}
-   return;
-  }catch(e){if(attempt<2)await new Promise(resolve=>setTimeout(resolve,(attempt+1)*800))}
- }
+ try{
+  const data=await retrieve();
+  if(show(data,Boolean(data.stale))&&!data.stale){try{localStorage.setItem(key,JSON.stringify(data))}catch(e){}}
+  return;
+ }catch(e){}
+
  try{
   const saved=JSON.parse(localStorage.getItem(key)||'null');
   if(saved&&show(saved,true))return;
