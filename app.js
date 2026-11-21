@@ -36,7 +36,7 @@ async function loadHelloAssoProgress(){
  for(let attempt=0;attempt<3;attempt++){
   try{
    const data=await retrieve();
-   if(show(data)){try{localStorage.setItem(key,JSON.stringify(data))}catch(e){}}
+   if(show(data,Boolean(data.stale))){if(!data.stale){try{localStorage.setItem(key,JSON.stringify(data))}catch(e){}}}
    return;
   }catch(e){if(attempt<2)await new Promise(resolve=>setTimeout(resolve,(attempt+1)*800))}
  }
