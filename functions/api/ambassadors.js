@@ -1,4 +1,4 @@
-const GOAL=100;
+const GOAL=500;
 const HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store'};
 function json(body,status=200){return new Response(JSON.stringify(body),{status,headers:HEADERS});}
 async function total(kv){
