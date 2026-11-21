@@ -10,11 +10,12 @@ export async function onRequestGet({env,request,context}){
  const cache=typeof caches!=='undefined'?caches.default:null;
  const key=new Request(new URL('/api/helloasso-verified-v1',request.url).toString(),{method:'GET'});
  const cached=cache?await cache.match(key):null;
+ const tokenKey=new Request(new URL('/api/helloasso-token-cache-v3',request.url).toString(),{method:'GET'});
  const cooldownKey=new Request(new URL('/api/helloasso-auth-cooldown-v2',request.url).toString(),{method:'GET'});
  const cooldown=cache?await cache.match(cooldownKey):null;
  const cooldownUntil=cooldown?Number(await cooldown.text()):0;
  const setCooldown=(ms)=>{if(cache){const response=new Response(String(Date.now()+ms),{headers:{'cache-control':'public, max-age='+Math.ceil(ms/1000)}});context?.waitUntil(cache.put(cooldownKey,response));}};
- if(cached){try{const data=await cached.clone().json();if(data.available&&Date.now()-Date.parse(data.updated)<300000)return json(data)}catch(e){}}
+ if(cached){try{const data=await cached.clone().json();if(data.available&&Date.now()-Date.parse(data.updated)<900000)return json(data)}catch(e){}}
  const fallback=async(reason,status=503)=>{
   if(cached){try{const data=await cached.clone().json();if(data.available)return json({...data,stale:true,warning:reason})}catch(e){}}
   return json({available:false,reason},status);
@@ -22,11 +23,34 @@ export async function onRequestGet({env,request,context}){
  if(cooldownUntil>Date.now())return fallback('authentication_rate_limited');
  if(!env.HELLOASSO_CLIENT_ID||!env.HELLOASSO_CLIENT_SECRET)return fallback('credentials_missing');
  try{
-  const body=new URLSearchParams({grant_type:'client_credentials',client_id:String(env.HELLOASSO_CLIENT_ID).trim(),client_secret:String(env.HELLOASSO_CLIENT_SECRET).trim()});
-  const auth=await fetch(API+'/oauth2/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
-  if(!auth.ok){if(auth.status===429){const retry=Number(auth.headers.get('retry-after'));setCooldown(Number.isFinite(retry)&&retry>0?Math.min(retry*1000,3600000):900000);}return fallback('authentication_failed_'+auth.status);}
-  const token=(await auth.json()).access_token;
-  if(!token)return fallback('missing_token');
+  let token=null;
+  if(cache){
+   const savedToken=await cache.match(tokenKey);
+   if(savedToken){try{const data=await savedToken.json();if(data.token&&Number(data.expiresAt)>Date.now()+60000)token=data.token;}catch(e){}}
+  }
+  if(!token){
+   // Réserver une fenêtre d'attente avant l'appel pour éviter des connexions en rafale.
+   setCooldown(60000);
+   const body=new URLSearchParams({grant_type:'client_credentials',client_id:String(env.HELLOASSO_CLIENT_ID).trim(),client_secret:String(env.HELLOASSO_CLIENT_SECRET).trim()});
+   const auth=await fetch(API+'/oauth2/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
+   if(!auth.ok){
+    if(auth.status===429){
+     const retry=auth.headers.get('retry-after');
+     const seconds=Number(retry);
+     const retryMs=Number.isFinite(seconds)&&seconds>0?seconds*1000:retry&&Number.isFinite(Date.parse(retry))?Date.parse(retry)-Date.now():900000;
+     setCooldown(Math.min(3600000,Math.max(900000,retryMs)));
+    }else setCooldown(300000);
+    return fallback('authentication_failed_'+auth.status);
+   }
+   const payload=await auth.json();
+   token=payload.access_token;
+   if(!token)return fallback('missing_token');
+   if(cache){
+    const ttl=Math.max(60,Math.min(3600,Number(payload.expires_in)||1800)-120);
+    const response=new Response(JSON.stringify({token,expiresAt:Date.now()+ttl*1000}),{headers:{'cache-control':'public, max-age='+ttl}});
+    context?.waitUntil(cache.put(tokenKey,response));
+   }
+  }
   let cents=0,count=0,page=1,seen=new Set();
   while(page<=100){
    const url=new URL(API+'/v5/organizations/'+ORG+'/forms/Donation/'+FORM+'/payments');
